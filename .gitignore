@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.db
+*.pyo
+.env
+static/uploads/*
+!static/uploads/.gitkeep
+miku-test-*
+*.log

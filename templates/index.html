@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miku Workbench - 初音工作台</title>
+<link rel="stylesheet" href="/static/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<!-- 动态背景 -->
+<div class="bg-gradient"></div>
+<div class="bg-bokeh"></div>
+
+<!-- 浮动装饰 -->
+<div class="floating-deco">
+  <span class="deco star" style="top:8%;left:12%;animation-delay:0s">✦</span>
+  <span class="deco star" style="top:20%;right:15%;animation-delay:1.5s">✧</span>
+  <span class="deco note" style="top:45%;left:5%;animation-delay:0.8s">♪</span>
+  <span class="deco note" style="bottom:15%;right:8%;animation-delay:2s">♫</span>
+  <span class="deco heart" style="top:65%;right:20%;animation-delay:1.2s">♥</span>
+  <span class="deco star" style="bottom:30%;left:18%;animation-delay:2.5s">✦</span>
+  <span class="deco note" style="top:12%;right:40%;animation-delay:0.3s">♪</span>
+  <span class="deco star" style="top:80%;left:45%;animation-delay:1.8s">✧</span>
+</div>
+
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="user-avatar-wrap" id="avatarWrap" title="点击更换头像">
+        <div class="miku-avatar" id="userAvatar">
+          <div class="miku-icon" id="defaultAvatar">
+            <svg viewBox="0 0 100 100" width="48" height="48">
+              <defs><linearGradient id="mikuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#39C5BB"/><stop offset="100%" style="stop-color:#56C5FF"/>
+              </linearGradient></defs>
+              <circle cx="50" cy="50" r="48" fill="url(#mikuGrad)" opacity="0.15"/>
+              <path d="M35 28 Q35 18 42 20 Q48 15 52 22 Q58 16 65 25 Q70 28 68 35 Q72 40 65 48 L65 55 Q60 58 50 58 Q40 58 35 55 L35 48 Q28 40 32 35 Q30 32 35 28Z" fill="#39C5BB" opacity="0.8"/>
+              <circle cx="44" cy="40" r="2.5" fill="#fff"/><circle cx="56" cy="40" r="2.5" fill="#fff"/>
+              <path d="M46 48 Q50 52 54 48" stroke="#fff" stroke-width="1.5" fill="none"/>
+              <rect x="38" y="55" width="24" height="18" rx="3" fill="#56C5FF" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+        <div class="avatar-upload-hint">更换头像</div>
+      </div>
+      <div class="sidebar-title">
+        <h1>Miku<span>Workbench</span></h1>
+        <p>初音工作台 · <span id="displayUsername">用户</span></p>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <a class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">◉</span><span class="nav-label">仪表盘</span>
+        <span class="nav-badge" id="nav-badge-tasks" style="display:none">0</span>
+      </a>
+      <a class="nav-item" data-page="tasks">
+        <span class="nav-icon">☑</span><span class="nav-label">任务</span>
+        <span class="nav-badge" id="nav-badge-pending" style="display:none">0</span>
+      </a>
+      <a class="nav-item" data-page="notes">
+        <span class="nav-icon">✎</span><span class="nav-label">笔记</span>
+      </a>
+      <a class="nav-item" data-page="projects">
+        <span class="nav-icon">◈</span><span class="nav-label">项目</span>
+      </a>
+      <a class="nav-item" data-page="schedule">
+        <span class="nav-icon">▦</span><span class="nav-label">日程</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="miku-quote">
+        <div class="quote-mark">"</div>
+        <p id="dailyQuote">Be Together Be Future</p>
+        <span>— Miku</span>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="sidebar-status">
+          <div class="status-dot"></div>
+          <span>系统运行中</span>
+        </div>
+        <button class="btn-logout" id="btnLogout" title="退出登录">退出登录</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主内容区 -->
+  <main class="main">
+    <!-- 顶部栏 -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h2 id="pageTitle">仪表盘</h2>
+        <span class="topbar-date" id="todayDate"></span>
+      </div>
+      <div class="topbar-right">
+        <div class="quick-add">
+          <input type="text" id="quickInput" placeholder="快速添加任务... 输入后按 Enter ✨">
+          <button class="btn-quick-add" id="btnQuickAdd">+</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 页面容器 -->
+    <div class="pages">
+      <!-- ===== 仪表盘 ===== -->
+      <section class="page page-dashboard active" id="page-dashboard">
+        <div class="hero-banner">
+          <div class="hero-text">
+            <h3>我们今天来构建什么？</h3>
+            <p>和初音未来一起，把灵感写成代码与旋律 ♪</p>
+          </div>
+          <div class="hero-illustration">
+            <div class="miku-companion">
+              <div class="companion-bubble">
+                <p id="mikuGreeting">早上好！今天也要加油哦～</p>
+              </div>
+              <div class="miku-figure">
+                <div class="miku-hair-left"></div>
+                <div class="miku-hair-right"></div>
+                <div class="miku-face">
+                  <div class="miku-eyes"><span></span><span></span></div>
+                  <div class="miku-mouth"></div>
+                </div>
+                <div class="miku-body">
+                  <div class="miku-tie"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-grid" id="kpiGrid"></div>
+
+        <div class="dash-row">
+          <div class="dash-card dash-tasks">
+            <div class="card-header">
+              <h4>待办任务</h4>
+              <span class="card-count" id="dashTaskCount">0</span>
+            </div>
+            <div class="card-body" id="dashTaskList"></div>
+          </div>
+          <div class="dash-card dash-notes">
+            <div class="card-header">
+              <h4>最近笔记</h4>
+              <span class="card-count" id="dashNoteCount">0</span>
+            </div>
+            <div class="card-body" id="dashNoteList"></div>
+          </div>
+          <div class="dash-card dash-projects">
+            <div class="card-header">
+              <h4>进行中项目</h4>
+              <span class="card-count" id="dashProjCount">0</span>
+            </div>
+            <div class="card-body" id="dashProjList"></div>
+          </div>
+        </div>
+
+        <div class="dash-card full-width">
+          <div class="card-header">
+            <h4>今日日程</h4>
+          </div>
+          <div class="card-body schedule-list" id="dashScheduleList"></div>
+        </div>
+      </section>
+
+      <!-- ===== 任务 ===== -->
+      <section class="page page-tasks" id="page-tasks">
+        <div class="page-toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">全部</button>
+            <button class="filter-tab" data-filter="pending">待办</button>
+            <button class="filter-tab" data-filter="completed">已完成</button>
+            <button class="filter-tab" data-filter="today">今日</button>
+          </div>
+          <button class="btn-add" id="btnAddTask">+ 新建任务</button>
+        </div>
+        <div class="task-list" id="taskList"></div>
+      </section>
+
+      <!-- ===== 笔记 ===== -->
+      <section class="page page-notes" id="page-notes">
+        <div class="page-toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-cat="all">全部</button>
+            <button class="filter-tab" data-cat="general">常规</button>
+            <button class="filter-tab" data-cat="work">工作</button>
+            <button class="filter-tab" data-cat="idea">灵感</button>
+            <button class="filter-tab" data-cat="diary">日记</button>
+          </div>
+          <button class="btn-add" id="btnAddNote">+ 新建笔记</button>
+        </div>
+        <div class="note-grid" id="noteGrid"></div>
+      </section>
+
+      <!-- ===== 项目 ===== -->
+      <section class="page page-projects" id="page-projects">
+        <div class="page-toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-pstatus="all">全部</button>
+            <button class="filter-tab" data-pstatus="active">进行中</button>
+            <button class="filter-tab" data-pstatus="paused">暂停</button>
+            <button class="filter-tab" data-pstatus="done">已完成</button>
+          </div>
+          <button class="btn-add" id="btnAddProject">+ 新建项目</button>
+        </div>
+        <div class="project-grid" id="projectGrid"></div>
+      </section>
+
+      <!-- ===== 日程 ===== -->
+      <section class="page page-schedule" id="page-schedule">
+        <div class="page-toolbar">
+          <div class="schedule-nav">
+            <button class="nav-arrow" id="prevMonth">◀</button>
+            <span class="schedule-month" id="scheduleMonth"></span>
+            <button class="nav-arrow" id="nextMonth">▶</button>
+          </div>
+          <button class="btn-add" id="btnAddSchedule">+ 新建日程</button>
+        </div>
+        <div class="schedule-container" id="scheduleContainer"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ===== 模态框 ===== -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">新建</h3>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" id="modalCancel">取消</button>
+      <button class="btn-save" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
