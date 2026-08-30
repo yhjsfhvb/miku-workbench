@@ -25,6 +25,12 @@ function formatDate(d) {
 }
 
 function todayStr() { return new Date().toISOString().split('T')[0]; }
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
 
 // ===== AUTH & AVATAR =====
 async function checkAuth() {
@@ -387,11 +393,17 @@ async function loadNotes() {
     grid.innerHTML = '<div class="empty-state"><div class="icon">✎</div><p>暂无笔记，点击右上角创建吧～</p></div>';
     return;
   }
-  grid.innerHTML = notes.map(n => `
+  grid.innerHTML = notes.map(n => {
+    const atts = n.attachments || [];
+    const imgAtts = atts.filter(a => a.is_image);
+    const fileAtts = atts.filter(a => !a.is_image);
+    return `
     <div class="note-card ${n.color}" data-id="${n.id}">
       ${n.pinned?'<div class="note-pin">📌</div>':''}
       <div class="note-title">${escHtml(n.title)}</div>
       <div class="note-content">${escHtml(n.content)}</div>
+      ${imgAtts.length ? `<div class="note-images">${imgAtts.slice(0,4).map(a => `<img src="${a.url}" class="note-thumb" onclick="event.stopPropagation();window.open('${a.url}','_blank')" alt="${escAttr(a.original_name)}">`).join('')}${imgAtts.length>4?`<div class="note-more-img">+${imgAtts.length-4}</div>`:''}</div>` : ''}
+      ${fileAtts.length ? `<div class="note-files">${fileAtts.slice(0,3).map(a => `<a href="${a.url}" class="note-file-link" download title="${escAttr(a.original_name)}"><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}${fileAtts.length>3?`<span class="note-more-file">+${fileAtts.length-3}个文件</span>`:''}</div>` : ''}
       <div class="note-footer">
         <span class="note-cat">${escHtml(n.category)}</span>
         <span class="note-date">${formatDate(n.updated_at)}</span>
@@ -402,7 +414,7 @@ async function loadNotes() {
         <button class="note-action" onclick="deleteNote(${n.id})" title="删除">✕</button>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 document.querySelectorAll('.filter-tab[data-cat]').forEach(tab => {
@@ -437,6 +449,8 @@ function openNoteModal(note = null) {
   const body = document.getElementById('modalBody');
   document.getElementById('modalTitle').textContent = note ? '编辑笔记' : '新建笔记';
   let selColor = note ? note.color : 'cyan';
+  let attachments = (note && note.attachments) ? [...note.attachments] : [];
+  let pendingNoteId = note ? note.id : null;
   body.innerHTML = `
     <div class="field">
       <label>标题</label>
@@ -445,6 +459,14 @@ function openNoteModal(note = null) {
     <div class="field">
       <label>内容</label>
       <textarea id="f_noteContent" placeholder="开始书写...">${note?escHtml(note.content):''}</textarea>
+    </div>
+    <div class="field">
+      <label>附件上传</label>
+      <div class="note-upload-area" id="noteUploadArea">
+        <span class="upload-placeholder">点击或拖拽文件到这里<br><small>支持图片/PDF/Word/Excel/PPT/ZIP/视频/音频，最大10MB</small></small></span>
+        <input type="file" id="noteFileInput" multiple style="display:none">
+      </div>
+      <div id="noteAttachList" class="note-attach-list"></div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -468,6 +490,19 @@ function openNoteModal(note = null) {
       </div>
     </div>
   `;
+  function renderAttachList() {
+    const list = document.getElementById('noteAttachList');
+    if (attachments.length === 0) { list.innerHTML = ''; return; }
+    list.innerHTML = attachments.map((a, i) => `
+      <div class="attach-item">
+        ${a.is_image ? `<img src="${a.url}" class="attach-thumb">` : `<span class="attach-file-icon">📄</span>`}
+        <span class="attach-name">${escHtml(a.original_name)}</span>
+        <span class="attach-size">${formatFileSize(a.size)}</span>
+        <button class="attach-remove" onclick="removeAttach(${i})" title="删除">✕</button>
+      </div>
+    `).join('');
+  }
+  renderAttachList();
   document.querySelectorAll('.color-opt').forEach(opt => {
     opt.addEventListener('click', () => {
       document.querySelectorAll('.color-opt').forEach(o => o.classList.remove('sel'));
@@ -475,6 +510,53 @@ function openNoteModal(note = null) {
       selColor = opt.dataset.c;
     });
   });
+  const uploadArea = document.getElementById('noteUploadArea');
+  const fileInput = document.getElementById('noteFileInput');
+  uploadArea.addEventListener('click', () => fileInput.click());
+  uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+  uploadArea.addEventListener('dragleave', () => { uploadArea.classList.remove('drag-over'); });
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+  async function handleFiles(files) {
+    if (files.length === 0) return;
+    if (!pendingNoteId) {
+      const data = {
+        title: document.getElementById('f_noteTitle').value.trim() || '无标题笔记',
+        content: document.getElementById('f_noteContent').value,
+        category: document.getElementById('f_noteCat').value,
+        color: selColor
+      };
+      const resp = await API.post('/api/notes', data);
+      pendingNoteId = resp.id;
+      note = resp;
+    }
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      uploadArea.querySelector('.upload-placeholder').innerHTML = `上传中: ${escHtml(file.name)}...`;
+      const resp = await fetch(`/api/notes/${pendingNoteId}/upload`, {method:'POST', body:formData});
+      const data = await resp.json();
+      if (data.success) {
+        attachments = data.attachments;
+        renderAttachList();
+      } else {
+        toast(data.error || '上传失败', 'error');
+      }
+    }
+    uploadArea.querySelector('.upload-placeholder').innerHTML = '点击或拖拽文件到这里<br><small>支持图片/PDF/Word/Excel/PPT/ZIP/视频/音频，最大10MB</small>';
+  }
+  window.removeAttach = async (idx) => {
+    const att = attachments[idx];
+    if (pendingNoteId && att) {
+      await fetch(`/api/notes/${pendingNoteId}/attachment/${att.filename}`, {method:'DELETE'});
+      attachments = attachments.filter((_, i) => i !== idx);
+      renderAttachList();
+    }
+  };
   document.getElementById('modalSave').onclick = async () => {
     const data = {
       title: document.getElementById('f_noteTitle').value.trim(),
@@ -483,8 +565,8 @@ function openNoteModal(note = null) {
       color: selColor
     };
     if (!data.title) { toast('请输入标题', 'error'); return; }
-    if (note) {
-      await API.put(`/api/notes/${note.id}`, { ...note, ...data });
+    if (pendingNoteId) {
+      await API.put(`/api/notes/${pendingNoteId}`, { ...note, ...data });
       toast('笔记已更新');
     } else {
       await API.post('/api/notes', data);

@@ -14,6 +14,12 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+NOTE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'note_uploads')
+os.makedirs(NOTE_UPLOAD_DIR, exist_ok=True)
+
+NOTE_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'rar', '7z', 'mp3', 'mp4', 'wav', 'avi', 'mov'}
+NOTE_MAX_SIZE = 10 * 1024 * 1024
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -51,9 +57,14 @@ def init_db():
         category TEXT DEFAULT 'general',
         color TEXT DEFAULT 'cyan',
         pinned INTEGER DEFAULT 0,
+        attachments TEXT DEFAULT '[]',
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime'))
     )''')
+    # Migrate: add attachments column if missing
+    cols = [r[1] for r in c.execute("PRAGMA table_info(notes)").fetchall()]
+    if 'attachments' not in cols:
+        c.execute("ALTER TABLE notes ADD COLUMN attachments TEXT DEFAULT '[]'")
 
     c.execute('''CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,7 +263,12 @@ def get_notes():
     else:
         notes = conn.execute('SELECT * FROM notes ORDER BY pinned DESC, updated_at DESC').fetchall()
     conn.close()
-    return jsonify([dict(n) for n in notes])
+    result = []
+    for n in notes:
+        nd = dict(n)
+        nd['attachments'] = json.loads(nd.get('attachments') or '[]')
+        result.append(nd)
+    return jsonify(result)
 
 
 @app.route('/api/notes', methods=['POST'])
@@ -267,7 +283,9 @@ def add_note():
     note_id = c.lastrowid
     note = conn.execute('SELECT * FROM notes WHERE id=?', (note_id,)).fetchone()
     conn.close()
-    return jsonify(dict(note)), 201
+    nd = dict(note)
+    nd['attachments'] = json.loads(nd.get('attachments') or '[]')
+    return jsonify(nd), 201
 
 
 @app.route('/api/notes/<int:nid>', methods=['PUT'])
@@ -287,17 +305,91 @@ def update_note(nid):
     conn.commit()
     note = conn.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
     conn.close()
-    return jsonify(dict(note))
+    nd = dict(note)
+    nd['attachments'] = json.loads(nd.get('attachments') or '[]')
+    return jsonify(nd)
 
 
 @app.route('/api/notes/<int:nid>', methods=['DELETE'])
 @login_required
 def delete_note(nid):
     conn = get_db()
+    note = conn.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
+    if note:
+        atts = json.loads(note['attachments']) if note['attachments'] else []
+        for att in atts:
+            fpath = os.path.join(NOTE_UPLOAD_DIR, att.get('filename', ''))
+            if os.path.exists(fpath):
+                try: os.remove(fpath)
+                except: pass
     conn.execute('DELETE FROM notes WHERE id=?', (nid,))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+@app.route('/api/notes/<int:nid>/upload', methods=['POST'])
+@login_required
+def upload_note_attachment(nid):
+    if 'file' not in request.files:
+        return jsonify({'error': '未选择文件'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '未选择文件'}), 400
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in NOTE_ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'不支持的文件格式: .{ext}'}), 400
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > NOTE_MAX_SIZE:
+        return jsonify({'error': '文件大小超过10MB限制'}), 400
+    safe_name = secure_filename(file.filename)
+    unique_name = f'note_{nid}_{int(datetime.now().timestamp())}_{safe_name}'
+    filepath = os.path.join(NOTE_UPLOAD_DIR, unique_name)
+    file.save(filepath)
+    is_img = ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    att_info = {
+        'filename': unique_name,
+        'original_name': file.filename,
+        'url': f'/static/note_uploads/{unique_name}',
+        'size': size,
+        'is_image': is_img,
+        'ext': ext
+    }
+    conn = get_db()
+    note = conn.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
+    if not note:
+        conn.close()
+        return jsonify({'error': '笔记不存在'}), 404
+    atts = json.loads(note['attachments']) if note['attachments'] else []
+    atts.append(att_info)
+    conn.execute('UPDATE notes SET attachments=?, updated_at=? WHERE id=?',
+                 (json.dumps(atts), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nid))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'attachment': att_info, 'attachments': atts})
+
+
+@app.route('/api/notes/<int:nid>/attachment/<filename>', methods=['DELETE'])
+@login_required
+def delete_note_attachment(nid, filename):
+    conn = get_db()
+    note = conn.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
+    if not note:
+        conn.close()
+        return jsonify({'error': '笔记不存在'}), 404
+    atts = json.loads(note['attachments']) if note['attachments'] else []
+    atts = [a for a in atts if a.get('filename') != filename]
+    fpath = os.path.join(NOTE_UPLOAD_DIR, filename)
+    if os.path.exists(fpath):
+        try: os.remove(fpath)
+        except: pass
+    conn.execute('UPDATE notes SET attachments=?, updated_at=? WHERE id=?',
+                 (json.dumps(atts), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nid))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'attachments': atts})
 
 
 # ========== PROJECT API ==========

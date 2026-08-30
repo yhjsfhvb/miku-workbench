@@ -5,5 +5,7 @@ __pycache__/
 .env
 static/uploads/*
 !static/uploads/.gitkeep
+static/note_uploads/*
+!static/note_uploads/.gitkeep
 miku-test-*
 *.log
