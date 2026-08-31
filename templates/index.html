@@ -69,6 +69,9 @@
       <a class="nav-item" data-page="schedule">
         <span class="nav-icon">▦</span><span class="nav-label">日程</span>
       </a>
+      <a class="nav-item" data-page="slt">
+        <span class="nav-icon">⚡</span><span class="nav-label">SLT经验</span>
+      </a>
     </nav>
 
     <div class="sidebar-footer">
@@ -220,6 +223,22 @@
           <button class="btn-add" id="btnAddSchedule">+ 新建日程</button>
         </div>
         <div class="schedule-container" id="scheduleContainer"></div>
+      </section>
+
+      <!-- ===== SLT测试经验分享 ===== -->
+      <section class="page page-slt" id="page-slt">
+        <div class="page-toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-scat="all">全部</button>
+            <button class="filter-tab" data-scat="general">常规</button>
+            <button class="filter-tab" data-scat="test">测试方法</button>
+            <button class="filter-tab" data-scat="case">用例设计</button>
+            <button class="filter-tab" data-scat="bug">缺陷分析</button>
+            <button class="filter-tab" data-scat="summary">总结报告</button>
+          </div>
+          <button class="btn-add" id="btnAddSlt">+ 新建经验</button>
+        </div>
+        <div class="note-grid" id="sltGrid"></div>
       </section>
     </div>
   </main>

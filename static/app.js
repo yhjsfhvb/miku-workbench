@@ -121,7 +121,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 });
 
 // ===== NAVIGATION =====
-const pageTitles = { dashboard:'仪表盘', tasks:'任务管理', notes:'我的笔记', projects:'项目管理', schedule:'日程安排' };
+const pageTitles = { dashboard:'仪表盘', tasks:'任务管理', notes:'我的笔记', projects:'项目管理', schedule:'日程安排', slt:'SLT测试经验分享' };
 const quotes = [
   'Be Together Be Future',
   '把灵感写成代码与旋律',
@@ -144,6 +144,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     else if (page === 'notes') loadNotes();
     else if (page === 'projects') loadProjects();
     else if (page === 'schedule') loadSchedule();
+    else if (page === 'slt') loadSlt();
   });
 });
 
@@ -837,9 +838,240 @@ async function quickAddTask() {
   refreshCurrent();
 }
 
+// ===== SLT EXPERIENCE =====
+let sltCat = 'all';
+async function loadSlt() {
+  const slts = await API.get(`/api/slt?category=${sltCat}`);
+  const grid = document.getElementById('sltGrid');
+  if (slts.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><div class="icon">⚡</div><p>暂无经验，点击右上角创建吧～</p></div>';
+    return;
+  }
+  grid.innerHTML = slts.map(s => {
+    const atts = s.attachments || [];
+    const imgAtts = atts.filter(a => a.is_image);
+    const fileAtts = atts.filter(a => !a.is_image);
+    return `
+    <div class="note-card ${s.color}" data-id="${s.id}" onclick="viewSlt(${s.id})">
+      ${s.pinned?'<div class="note-pin">📌</div>':''}
+      <div class="note-title">${escHtml(s.title)}</div>
+      <div class="note-content">${escHtml(s.content)}</div>
+      ${imgAtts.length ? `<div class="note-images">${imgAtts.slice(0,4).map(a => `<img src="${a.url}" class="note-thumb" onclick="event.stopPropagation();window.open('${a.url}','_blank')" alt="${escAttr(a.original_name)}">`).join('')}${imgAtts.length>4?`<div class="note-more-img">+${imgAtts.length-4}</div>`:''}</div>` : ''}
+      ${fileAtts.length ? `<div class="note-files">${fileAtts.slice(0,3).map(a => `<a href="${a.url}" class="note-file-link" download title="${escAttr(a.original_name)}" onclick="event.stopPropagation()"><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}${fileAtts.length>3?`<span class="note-more-file">+${fileAtts.length-3}个文件</span>`:''}</div>` : ''}
+      <div class="note-footer">
+        <span class="note-cat">${escHtml(s.category)}</span>
+        <span class="note-date">${formatDate(s.updated_at)}</span>
+      </div>
+      <div class="note-actions">
+        <button class="note-action" onclick="event.stopPropagation();editSlt(${s.id})" title="编辑">✎</button>
+        <button class="note-action" onclick="event.stopPropagation();pinSlt(${s.id},${s.pinned?0:1})" title="置顶">📌</button>
+        <button class="note-action" onclick="event.stopPropagation();deleteSlt(${s.id})" title="删除">✕</button>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+document.querySelectorAll('.filter-tab[data-scat]').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab[data-scat]').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    sltCat = tab.dataset.scat;
+    loadSlt();
+  });
+});
+
+document.getElementById('btnAddSlt').addEventListener('click', () => openSltModal());
+
+async function pinSlt(id, pinned) {
+  const slts = await API.get('/api/slt');
+  const s = slts.find(s => s.id === id);
+  if (s) { await API.put(`/api/slt/${id}`, { ...s, pinned }); toast(pinned?'已置顶':'已取消置顶'); loadSlt(); }
+}
+async function deleteSlt(id) {
+  await API.del(`/api/slt/${id}`);
+  toast('经验已删除');
+  loadSlt();
+}
+function viewSlt(id) {
+  API.get('/api/slt').then(slts => {
+    const s = slts.find(ss => ss.id === id);
+    if (!s) return;
+    const body = document.getElementById('modalBody');
+    document.getElementById('modalTitle').textContent = s.title;
+    const atts = s.attachments || [];
+    const imgAtts = atts.filter(a => a.is_image);
+    const fileAtts = atts.filter(a => !a.is_image);
+    const catNames = { general:'常规', test:'测试方法', case:'用例设计', bug:'缺陷分析', summary:'总结报告' };
+    body.innerHTML = `
+      <div class="note-view-meta">
+        <span class="note-view-tag">${catNames[s.category] || s.category}</span>
+        <span class="note-view-date">更新于 ${s.updated_at || ''}</span>
+        ${s.pinned?'<span class="note-view-tag pinned">📌 已置顶</span>':''}
+      </div>
+      <div class="note-view-content">${escHtml(s.content) || '<span style="color:#999">（无内容）</span>'}</div>
+      ${imgAtts.length ? `<div class="note-view-images">${imgAtts.map(a => `<img src="${a.url}" class="note-view-img" onclick="window.open('${a.url}','_blank')" alt="${escAttr(a.original_name)}">`).join('')}</div>` : ''}
+      ${fileAtts.length ? `<div class="note-view-files">${fileAtts.map(a => `<a href="${a.url}" class="note-file-link" download><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}</div>` : ''}
+    `;
+    document.getElementById('modalSave').style.display = 'none';
+    document.getElementById('modalCancel').textContent = '关闭';
+    const editBtn = document.getElementById('modalEditBtn');
+    editBtn.style.display = 'inline-block';
+    editBtn.onclick = () => { document.getElementById('modalSave').style.display = ''; editBtn.style.display = 'none'; document.getElementById('modalCancel').textContent = '取消'; openSltModal(s); };
+    showModal();
+  });
+}
+function editSlt(id) {
+  API.get('/api/slt').then(slts => {
+    const s = slts.find(ss => ss.id === id);
+    if (s) openSltModal(s);
+  });
+}
+
+function openSltModal(s = null) {
+  const body = document.getElementById('modalBody');
+  document.getElementById('modalTitle').textContent = s ? '编辑经验' : '新建经验';
+  document.getElementById('modalSave').style.display = '';
+  document.getElementById('modalEditBtn').style.display = 'none';
+  document.getElementById('modalCancel').textContent = '取消';
+  let selColor = s ? s.color : 'cyan';
+  let attachments = (s && s.attachments) ? [...s.attachments] : [];
+  let pendingId = s ? s.id : null;
+  body.innerHTML = `
+    <div class="field">
+      <label>标题</label>
+      <input type="text" id="f_sltTitle" value="${s?escAttr(s.title):''}" placeholder="输入经验标题...">
+    </div>
+    <div class="field">
+      <label>内容</label>
+      <textarea id="f_sltContent" placeholder="分享你的测试经验...">${s?escHtml(s.content):''}</textarea>
+    </div>
+    <div class="field">
+      <label>附件上传</label>
+      <div class="note-upload-area" id="sltUploadArea">
+        <span class="upload-placeholder">点击或拖拽文件到这里<br><small>支持图片/PDF/Word/Excel/PPT/ZIP/视频/音频，最大10MB</small></small></span>
+        <input type="file" id="sltFileInput" multiple style="display:none">
+      </div>
+      <div id="sltAttachList" class="note-attach-list"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>分类</label>
+        <select id="f_sltCat">
+          <option value="general" ${s&&s.category==='general'?'selected':''}>常规</option>
+          <option value="test" ${s&&s.category==='test'?'selected':''}>测试方法</option>
+          <option value="case" ${s&&s.category==='case'?'selected':''}>用例设计</option>
+          <option value="bug" ${s&&s.category==='bug'?'selected':''}>缺陷分析</option>
+          <option value="summary" ${s&&s.category==='summary'?'selected':''}>总结报告</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>颜色</label>
+        <div class="color-pick" id="sltColorPick">
+          <div class="color-opt cyan ${selColor==='cyan'?'sel':''}" data-c="cyan"></div>
+          <div class="color-opt pink ${selColor==='pink'?'sel':''}" data-c="pink"></div>
+          <div class="color-opt yellow ${selColor==='yellow'?'sel':''}" data-c="yellow"></div>
+          <div class="color-opt purple ${selColor==='purple'?'sel':''}" data-c="purple"></div>
+          <div class="color-opt white ${selColor==='white'?'sel':''}" data-c="white"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  function renderAttachList() {
+    const list = document.getElementById('sltAttachList');
+    if (attachments.length === 0) { list.innerHTML = ''; return; }
+    list.innerHTML = attachments.map((a, i) => `
+      <div class="attach-item">
+        ${a.is_image ? `<img src="${a.url}" class="attach-thumb">` : `<span class="attach-file-icon">📄</span>`}
+        <span class="attach-name">${escHtml(a.original_name)}</span>
+        <span class="attach-size">${formatFileSize(a.size)}</span>
+        <button class="attach-remove" onclick="removeSltAttach(${i})" title="删除">✕</button>
+      </div>
+    `).join('');
+  }
+  renderAttachList();
+  document.querySelectorAll('#sltColorPick .color-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('#sltColorPick .color-opt').forEach(o => o.classList.remove('sel'));
+      opt.classList.add('sel');
+      selColor = opt.dataset.c;
+    });
+  });
+  const uploadArea = document.getElementById('sltUploadArea');
+  const fileInput = document.getElementById('sltFileInput');
+  uploadArea.addEventListener('click', () => fileInput.click());
+  uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+  uploadArea.addEventListener('dragleave', () => { uploadArea.classList.remove('drag-over'); });
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    handleSltFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', (e) => handleSltFiles(e.target.files));
+  async function handleSltFiles(files) {
+    if (files.length === 0) return;
+    if (!pendingId) {
+      const data = {
+        title: document.getElementById('f_sltTitle').value.trim() || '无标题经验',
+        content: document.getElementById('f_sltContent').value,
+        category: document.getElementById('f_sltCat').value,
+        color: selColor
+      };
+      const resp = await API.post('/api/slt', data);
+      pendingId = resp.id;
+      s = resp;
+    }
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      uploadArea.querySelector('.upload-placeholder').innerHTML = `上传中: ${escHtml(file.name)}...`;
+      const resp = await fetch(`/api/slt/${pendingId}/upload`, {method:'POST', body:formData});
+      const data = await resp.json();
+      if (data.success) {
+        attachments = data.attachments;
+        renderAttachList();
+      } else {
+        toast(data.error || '上传失败', 'error');
+      }
+    }
+    uploadArea.querySelector('.upload-placeholder').innerHTML = '点击或拖拽文件到这里<br><small>支持图片/PDF/Word/Excel/PPT/ZIP/视频/音频，最大10MB</small>';
+  }
+  window.removeSltAttach = async (idx) => {
+    const att = attachments[idx];
+    if (pendingId && att) {
+      await fetch(`/api/slt/${pendingId}/attachment/${att.filename}`, {method:'DELETE'});
+      attachments = attachments.filter((_, i) => i !== idx);
+      renderAttachList();
+    }
+  };
+  document.getElementById('modalSave').onclick = async () => {
+    const data = {
+      title: document.getElementById('f_sltTitle').value.trim(),
+      content: document.getElementById('f_sltContent').value,
+      category: document.getElementById('f_sltCat').value,
+      color: selColor
+    };
+    if (!data.title) { toast('请输入标题', 'error'); return; }
+    if (pendingId) {
+      await API.put(`/api/slt/${pendingId}`, { ...s, ...data });
+      toast('经验已更新');
+    } else {
+      await API.post('/api/slt', data);
+      toast('经验已创建 ⚡');
+    }
+    closeModal();
+    loadSlt();
+  };
+  showModal();
+}
+
 // ===== MODAL HELPERS =====
 function showModal() { document.getElementById('modalOverlay').classList.add('show'); }
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  document.getElementById('modalEditBtn').style.display = 'none';
+  document.getElementById('modalSave').style.display = '';
+  document.getElementById('modalCancel').textContent = '取消';
+}
 document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('modalCancel').addEventListener('click', closeModal);
 document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') closeModal(); });
@@ -856,6 +1088,7 @@ function refreshCurrent() {
   else if (active === 'notes') loadNotes();
   else if (active === 'projects') loadProjects();
   else if (active === 'schedule') loadSchedule();
+  else if (active === 'slt') loadSlt();
   loadDashboard();
 }
 

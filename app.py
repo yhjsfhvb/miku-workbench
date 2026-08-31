@@ -17,6 +17,9 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 NOTE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'note_uploads')
 os.makedirs(NOTE_UPLOAD_DIR, exist_ok=True)
 
+SLT_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'slt_uploads')
+os.makedirs(SLT_UPLOAD_DIR, exist_ok=True)
+
 NOTE_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'rar', '7z', 'mp3', 'mp4', 'wav', 'avi', 'mov'}
 NOTE_MAX_SIZE = 10 * 1024 * 1024
 
@@ -85,6 +88,21 @@ def init_db():
         completed INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now','localtime'))
     )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS slt_experiences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        content TEXT DEFAULT '',
+        category TEXT DEFAULT 'general',
+        color TEXT DEFAULT 'cyan',
+        pinned INTEGER DEFAULT 0,
+        attachments TEXT DEFAULT '[]',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )''')
+    cols_slt = [r[1] for r in c.execute("PRAGMA table_info(slt_experiences)").fetchall()]
+    if 'attachments' not in cols_slt:
+        c.execute("ALTER TABLE slt_experiences ADD COLUMN attachments TEXT DEFAULT '[]'")
 
     # Create default user if not exists
     existing = c.execute('SELECT * FROM users WHERE username=?', ('yao',)).fetchone()
@@ -502,6 +520,146 @@ def delete_schedule(sid):
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+# ========== SLT EXPERIENCE API ==========
+@app.route('/api/slt', methods=['GET'])
+@login_required
+def get_slt():
+    conn = get_db()
+    category = request.args.get('category')
+    if category and category != 'all':
+        slts = conn.execute('SELECT * FROM slt_experiences WHERE category=? ORDER BY pinned DESC, updated_at DESC', (category,)).fetchall()
+    else:
+        slts = conn.execute('SELECT * FROM slt_experiences ORDER BY pinned DESC, updated_at DESC').fetchall()
+    conn.close()
+    result = []
+    for s in slts:
+        sd = dict(s)
+        sd['attachments'] = json.loads(sd.get('attachments') or '[]')
+        result.append(sd)
+    return jsonify(result)
+
+
+@app.route('/api/slt', methods=['POST'])
+@login_required
+def add_slt():
+    data = request.json
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('INSERT INTO slt_experiences (title, content, category, color) VALUES (?, ?, ?, ?)',
+              (data.get('title', ''), data.get('content', ''), data.get('category', 'general'), data.get('color', 'cyan')))
+    conn.commit()
+    sid = c.lastrowid
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    conn.close()
+    sd = dict(slt)
+    sd['attachments'] = json.loads(sd.get('attachments') or '[]')
+    return jsonify(sd), 201
+
+
+@app.route('/api/slt/<int:sid>', methods=['PUT'])
+@login_required
+def update_slt(sid):
+    data = request.json
+    conn = get_db()
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    if not slt:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn.execute('UPDATE slt_experiences SET title=?, content=?, category=?, color=?, pinned=?, updated_at=? WHERE id=?',
+                 (data.get('title', slt['title']), data.get('content', slt['content']),
+                  data.get('category', slt['category']), data.get('color', slt['color']),
+                  data.get('pinned', slt['pinned']), now, sid))
+    conn.commit()
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    conn.close()
+    sd = dict(slt)
+    sd['attachments'] = json.loads(sd.get('attachments') or '[]')
+    return jsonify(sd)
+
+
+@app.route('/api/slt/<int:sid>', methods=['DELETE'])
+@login_required
+def delete_slt(sid):
+    conn = get_db()
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    if slt:
+        atts = json.loads(slt['attachments']) if slt['attachments'] else []
+        for att in atts:
+            fpath = os.path.join(SLT_UPLOAD_DIR, att.get('filename', ''))
+            if os.path.exists(fpath):
+                try: os.remove(fpath)
+                except: pass
+    conn.execute('DELETE FROM slt_experiences WHERE id=?', (sid,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/slt/<int:sid>/upload', methods=['POST'])
+@login_required
+def upload_slt_attachment(sid):
+    if 'file' not in request.files:
+        return jsonify({'error': '未选择文件'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '未选择文件'}), 400
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in NOTE_ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'不支持的文件格式: .{ext}'}), 400
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > NOTE_MAX_SIZE:
+        return jsonify({'error': '文件大小超过10MB限制'}), 400
+    safe_name = secure_filename(file.filename)
+    unique_name = f'slt_{sid}_{int(datetime.now().timestamp())}_{safe_name}'
+    filepath = os.path.join(SLT_UPLOAD_DIR, unique_name)
+    file.save(filepath)
+    is_img = ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    att_info = {
+        'filename': unique_name,
+        'original_name': file.filename,
+        'url': f'/static/slt_uploads/{unique_name}',
+        'size': size,
+        'is_image': is_img,
+        'ext': ext
+    }
+    conn = get_db()
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    if not slt:
+        conn.close()
+        return jsonify({'error': '经验不存在'}), 404
+    atts = json.loads(slt['attachments']) if slt['attachments'] else []
+    atts.append(att_info)
+    conn.execute('UPDATE slt_experiences SET attachments=?, updated_at=? WHERE id=?',
+                 (json.dumps(atts), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sid))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'attachment': att_info, 'attachments': atts})
+
+
+@app.route('/api/slt/<int:sid>/attachment/<filename>', methods=['DELETE'])
+@login_required
+def delete_slt_attachment(sid, filename):
+    conn = get_db()
+    slt = conn.execute('SELECT * FROM slt_experiences WHERE id=?', (sid,)).fetchone()
+    if not slt:
+        conn.close()
+        return jsonify({'error': '经验不存在'}), 404
+    atts = json.loads(slt['attachments']) if slt['attachments'] else []
+    atts = [a for a in atts if a.get('filename') != filename]
+    fpath = os.path.join(SLT_UPLOAD_DIR, filename)
+    if os.path.exists(fpath):
+        try: os.remove(fpath)
+        except: pass
+    conn.execute('UPDATE slt_experiences SET attachments=?, updated_at=? WHERE id=?',
+                 (json.dumps(atts), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sid))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'attachments': atts})
 
 
 # ========== DASHBOARD API ==========

@@ -7,5 +7,7 @@ static/uploads/*
 !static/uploads/.gitkeep
 static/note_uploads/*
 !static/note_uploads/.gitkeep
+static/slt_uploads/*
+!static/slt_uploads/.gitkeep
 miku-test-*
 *.log
