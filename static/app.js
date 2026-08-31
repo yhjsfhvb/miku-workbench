@@ -398,20 +398,20 @@ async function loadNotes() {
     const imgAtts = atts.filter(a => a.is_image);
     const fileAtts = atts.filter(a => !a.is_image);
     return `
-    <div class="note-card ${n.color}" data-id="${n.id}">
+    <div class="note-card ${n.color}" data-id="${n.id}" onclick="viewNote(${n.id})">
       ${n.pinned?'<div class="note-pin">📌</div>':''}
       <div class="note-title">${escHtml(n.title)}</div>
       <div class="note-content">${escHtml(n.content)}</div>
       ${imgAtts.length ? `<div class="note-images">${imgAtts.slice(0,4).map(a => `<img src="${a.url}" class="note-thumb" onclick="event.stopPropagation();window.open('${a.url}','_blank')" alt="${escAttr(a.original_name)}">`).join('')}${imgAtts.length>4?`<div class="note-more-img">+${imgAtts.length-4}</div>`:''}</div>` : ''}
-      ${fileAtts.length ? `<div class="note-files">${fileAtts.slice(0,3).map(a => `<a href="${a.url}" class="note-file-link" download title="${escAttr(a.original_name)}"><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}${fileAtts.length>3?`<span class="note-more-file">+${fileAtts.length-3}个文件</span>`:''}</div>` : ''}
+      ${fileAtts.length ? `<div class="note-files">${fileAtts.slice(0,3).map(a => `<a href="${a.url}" class="note-file-link" download title="${escAttr(a.original_name)}" onclick="event.stopPropagation()"><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}${fileAtts.length>3?`<span class="note-more-file">+${fileAtts.length-3}个文件</span>`:''}</div>` : ''}
       <div class="note-footer">
         <span class="note-cat">${escHtml(n.category)}</span>
         <span class="note-date">${formatDate(n.updated_at)}</span>
       </div>
       <div class="note-actions">
-        <button class="note-action" onclick="editNote(${n.id})" title="编辑">✎</button>
-        <button class="note-action" onclick="pinNote(${n.id},${n.pinned?0:1})" title="置顶">📌</button>
-        <button class="note-action" onclick="deleteNote(${n.id})" title="删除">✕</button>
+        <button class="note-action" onclick="event.stopPropagation();editNote(${n.id})" title="编辑">✎</button>
+        <button class="note-action" onclick="event.stopPropagation();pinNote(${n.id},${n.pinned?0:1})" title="置顶">📌</button>
+        <button class="note-action" onclick="event.stopPropagation();deleteNote(${n.id})" title="删除">✕</button>
       </div>
     </div>
   `;}).join('');
@@ -438,6 +438,37 @@ async function deleteNote(id) {
   toast('笔记已删除');
   loadNotes();
 }
+function viewNote(id) {
+  API.get('/api/notes').then(notes => {
+    const n = notes.find(nn => nn.id === id);
+    if (!n) return;
+    const body = document.getElementById('modalBody');
+    document.getElementById('modalTitle').textContent = n.title;
+    const atts = n.attachments || [];
+    const imgAtts = atts.filter(a => a.is_image);
+    const fileAtts = atts.filter(a => !a.is_image);
+    const catNames = { general:'常规', work:'工作', idea:'灵感', diary:'日记' };
+    body.innerHTML = `
+      <div class="note-view-meta">
+        <span class="note-view-tag">${catNames[n.category] || n.category}</span>
+        <span class="note-view-date">更新于 ${n.updated_at || ''}</span>
+        ${n.pinned?'<span class="note-view-tag pinned">📌 已置顶</span>':''}
+      </div>
+      <div class="note-view-content">${escHtml(n.content) || '<span style="color:#999">（无内容）</span>'}</div>
+      ${imgAtts.length ? `<div class="note-view-images">${imgAtts.map(a => `<img src="${a.url}" class="note-view-img" onclick="window.open('${a.url}','_blank')" alt="${escAttr(a.original_name)}">`).join('')}</div>` : ''}
+      ${fileAtts.length ? `<div class="note-view-files">${fileAtts.map(a => `<a href="${a.url}" class="note-file-link" download><span class="file-icon">📄</span><span class="file-name">${escHtml(a.original_name)}</span><span class="file-size">${formatFileSize(a.size)}</span></a>`).join('')}</div>` : ''}
+    `;
+    const saveBtn = document.getElementById('modalSave');
+    saveBtn.style.display = 'none';
+    const cancelBtn = document.getElementById('modalCancel');
+    cancelBtn.textContent = '关闭';
+    const editBtn = document.getElementById('modalEditBtn');
+    if (editBtn) editBtn.style.display = 'inline-block';
+    editBtn.onclick = () => { saveBtn.style.display = ''; editBtn.style.display = 'none'; cancelBtn.textContent = '取消'; openNoteModal(n); };
+    showModal();
+  });
+}
+
 function editNote(id) {
   API.get('/api/notes').then(notes => {
     const note = notes.find(n => n.id === id);
@@ -448,6 +479,9 @@ function editNote(id) {
 function openNoteModal(note = null) {
   const body = document.getElementById('modalBody');
   document.getElementById('modalTitle').textContent = note ? '编辑笔记' : '新建笔记';
+  document.getElementById('modalSave').style.display = '';
+  document.getElementById('modalEditBtn').style.display = 'none';
+  document.getElementById('modalCancel').textContent = '取消';
   let selColor = note ? note.color : 'cyan';
   let attachments = (note && note.attachments) ? [...note.attachments] : [];
   let pendingNoteId = note ? note.id : null;
