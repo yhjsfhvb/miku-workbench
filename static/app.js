@@ -320,9 +320,11 @@ async function toggleTask(id) {
 }
 
 async function deleteTask(id) {
-  await API.del(`/api/tasks/${id}`);
-  toast('任务已删除');
-  refreshCurrent();
+  showConfirm('确认删除这个任务？', async () => {
+    await API.del(`/api/tasks/${id}`);
+    toast('任务已删除');
+    refreshCurrent();
+  });
 }
 
 function editTask(id) {
@@ -435,9 +437,11 @@ async function pinNote(id, pinned) {
   if (note) { await API.put(`/api/notes/${id}`, { ...note, pinned }); toast(pinned?'已置顶':'已取消置顶'); loadNotes(); }
 }
 async function deleteNote(id) {
-  await API.del(`/api/notes/${id}`);
-  toast('笔记已删除');
-  loadNotes();
+  showConfirm('确认删除这条笔记？删除后无法恢复。', async () => {
+    await API.del(`/api/notes/${id}`);
+    toast('笔记已删除');
+    loadNotes();
+  });
 }
 function viewNote(id) {
   API.get('/api/notes').then(notes => {
@@ -652,9 +656,11 @@ document.querySelectorAll('.filter-tab[data-pstatus]').forEach(tab => {
 document.getElementById('btnAddProject').addEventListener('click', () => openProjectModal());
 
 async function deleteProject(id) {
-  await API.del(`/api/projects/${id}`);
-  toast('项目已删除');
-  loadProjects();
+  showConfirm('确认删除这个项目？', async () => {
+    await API.del(`/api/projects/${id}`);
+    toast('项目已删除');
+    loadProjects();
+  });
 }
 function editProject(id) {
   API.get('/api/projects').then(projects => {
@@ -880,7 +886,7 @@ document.querySelectorAll('.filter-tab[data-scat]').forEach(tab => {
   });
 });
 
-document.getElementById('btnAddSlt').addEventListener('click', () => openSltModal());
+document.getElementById('btnAddSlt').addEventListener('click', () => openSltModal(null, sltCat !== 'all' ? sltCat : null));
 
 async function pinSlt(id, pinned) {
   const slts = await API.get('/api/slt');
@@ -888,9 +894,11 @@ async function pinSlt(id, pinned) {
   if (s) { await API.put(`/api/slt/${id}`, { ...s, pinned }); toast(pinned?'已置顶':'已取消置顶'); loadSlt(); }
 }
 async function deleteSlt(id) {
-  await API.del(`/api/slt/${id}`);
-  toast('经验已删除');
-  loadSlt();
+  showConfirm('确认删除这条经验？删除后无法恢复。', async () => {
+    await API.del(`/api/slt/${id}`);
+    toast('经验已删除');
+    loadSlt();
+  });
 }
 function viewSlt(id) {
   API.get('/api/slt').then(slts => {
@@ -927,7 +935,7 @@ function editSlt(id) {
   });
 }
 
-function openSltModal(s = null) {
+function openSltModal(s = null, defaultCat = null) {
   const body = document.getElementById('modalBody');
   document.getElementById('modalTitle').textContent = s ? '编辑经验' : '新建经验';
   document.getElementById('modalSave').style.display = '';
@@ -936,6 +944,7 @@ function openSltModal(s = null) {
   let selColor = s ? s.color : 'cyan';
   let attachments = (s && s.attachments) ? [...s.attachments] : [];
   let pendingId = s ? s.id : null;
+  const curCat = s ? s.category : (defaultCat || 'general');
   body.innerHTML = `
     <div class="field">
       <label>标题</label>
@@ -957,11 +966,11 @@ function openSltModal(s = null) {
       <div class="field">
         <label>分类</label>
         <select id="f_sltCat">
-          <option value="general" ${s&&s.category==='general'?'selected':''}>常规</option>
-          <option value="test" ${s&&s.category==='test'?'selected':''}>测试方法</option>
-          <option value="case" ${s&&s.category==='case'?'selected':''}>用例设计</option>
-          <option value="bug" ${s&&s.category==='bug'?'selected':''}>缺陷分析</option>
-          <option value="summary" ${s&&s.category==='summary'?'selected':''}>总结报告</option>
+          <option value="general" ${curCat==='general'?'selected':''}>常规</option>
+          <option value="test" ${curCat==='test'?'selected':''}>测试方法</option>
+          <option value="case" ${curCat==='case'?'selected':''}>用例设计</option>
+          <option value="bug" ${curCat==='bug'?'selected':''}>缺陷分析</option>
+          <option value="summary" ${curCat==='summary'?'selected':''}>总结报告</option>
         </select>
       </div>
       <div class="field">
@@ -1013,7 +1022,7 @@ function openSltModal(s = null) {
       const data = {
         title: document.getElementById('f_sltTitle').value.trim() || '无标题经验',
         content: document.getElementById('f_sltContent').value,
-        category: document.getElementById('f_sltCat').value,
+        category: document.getElementById('f_sltCat').value || curCat,
         color: selColor
       };
       const resp = await API.post('/api/slt', data);
@@ -1047,7 +1056,7 @@ function openSltModal(s = null) {
     const data = {
       title: document.getElementById('f_sltTitle').value.trim(),
       content: document.getElementById('f_sltContent').value,
-      category: document.getElementById('f_sltCat').value,
+      category: document.getElementById('f_sltCat').value || curCat,
       color: selColor
     };
     if (!data.title) { toast('请输入标题', 'error'); return; }
@@ -1062,6 +1071,27 @@ function openSltModal(s = null) {
     loadSlt();
   };
   showModal();
+}
+
+// ===== CONFIRM DIALOG =====
+function showConfirm(text, onOk) {
+  const overlay = document.getElementById('confirmOverlay');
+  document.getElementById('confirmText').textContent = text;
+  overlay.classList.add('show');
+  const okBtn = document.getElementById('confirmOk');
+  const cancelBtn = document.getElementById('confirmCancel');
+  function cleanup() {
+    overlay.classList.remove('show');
+    okBtn.removeEventListener('click', okHandler);
+    cancelBtn.removeEventListener('click', cancelHandler);
+    overlay.removeEventListener('click', overlayHandler);
+  }
+  function okHandler() { cleanup(); onOk(); }
+  function cancelHandler() { cleanup(); }
+  function overlayHandler(e) { if (e.target === overlay) cleanup(); }
+  okBtn.addEventListener('click', okHandler);
+  cancelBtn.addEventListener('click', cancelHandler);
+  overlay.addEventListener('click', overlayHandler);
 }
 
 // ===== MODAL HELPERS =====

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Miku Workbench - 初音工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=20260831">
+<link rel="stylesheet" href="/static/style.css?v=20260831b">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -260,9 +260,21 @@
   </div>
 </div>
 
+<!-- 确认弹窗 -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-dialog">
+    <div class="confirm-icon" id="confirmIcon">⚠</div>
+    <div class="confirm-text" id="confirmText">确认删除？</div>
+    <div class="confirm-buttons">
+      <button class="btn-cancel" id="confirmCancel">取消</button>
+      <button class="btn-danger" id="confirmOk">确认删除</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast-container" id="toastContainer"></div>
 
-<script src="/static/app.js?v=20260831"></script>
+<script src="/static/app.js?v=20260831b"></script>
 </body>
 </html>
